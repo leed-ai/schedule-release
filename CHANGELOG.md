@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.0
+
+- `release-version` names the release the pages ship in. Leed records every scheduled page in a
+  release and the job prints its name; left unset, Leed joins an unstarted date-named release at
+  the same publish time or creates one (`yyyy-mm-dd-01`).
+- New output `release-name`.
+
 ## v1.1.0
 
 - `publish-at` is now optional. Left unset, the release publishes 15 minutes after the job

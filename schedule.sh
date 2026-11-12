@@ -39,6 +39,7 @@ LEED_BASE_URL="${LEED_BASE_URL:-https://app.leed.ai}"
 LEED_DRY_RUN="${LEED_DRY_RUN:-true}"
 LEED_FAIL_ON_UNMATCHED="${LEED_FAIL_ON_UNMATCHED:-false}"
 LEED_MINIMUM_STATUS="${LEED_MINIMUM_STATUS:-}"
+LEED_RELEASE_VERSION="${LEED_RELEASE_VERSION:-}"
 
 ENDPOINT="${LEED_BASE_URL%/}/api/page/schedule-by-source"
 
@@ -252,8 +253,10 @@ post() {
     --arg publishedAt "$LEED_PUBLISH_AT" \
     --argjson confirm "$confirm" \
     --arg minimumStatus "$LEED_MINIMUM_STATUS" \
+    --arg releaseVersion "$LEED_RELEASE_VERSION" \
     '{sourceIds: $sourceIds, publishedAt: $publishedAt, confirm: $confirm}
-     + (if $minimumStatus == "" then {} else {minimumStatus: $minimumStatus} end)')"
+     + (if $minimumStatus == "" then {} else {minimumStatus: $minimumStatus} end)
+     + (if $releaseVersion == "" then {} else {releaseVersion: $releaseVersion} end)')"
 
   http="$(curl -sS -o /tmp/leed-response.json -w '%{http_code}' \
     -X POST "$ENDPOINT" \
@@ -294,7 +297,8 @@ for ((i = 0; i < ${#SHAS[@]}; i += MAX_SOURCE_IDS)); do
   TOTAL_WOULD=$((TOTAL_WOULD + would))
   UNMATCHED="$(jq -cn --argjson a "$UNMATCHED" --argjson b "$unmatched" '$a + $b')"
 
-  note "Dry run: ${matched} page(s) matched, ${would} would be scheduled, ${wouldfail} would fail."
+  RELEASE_NAME=$(jq -r '.releaseName // empty' <<<"$resp")
+  note "Dry run: ${matched} page(s) matched, ${would} would be scheduled, ${wouldfail} would fail. Release: ${RELEASE_NAME:-unnamed}."
   jq -r '.results[]? | select(.wouldSchedule == false)
          | "  ✗ \(.pageId) \(.title // "") — \(.reason // "no reason given")"' <<<"$resp" || true
 
@@ -310,7 +314,8 @@ for ((i = 0; i < ${#SHAS[@]}; i += MAX_SOURCE_IDS)); do
     failed=$(jq -r '.failed' <<<"$resp")
     remaining=$(jq -r '.remaining // 0' <<<"$resp")
     TOTAL_SCHEDULED=$((TOTAL_SCHEDULED + scheduled))
-    note "Scheduled ${scheduled}, ${failed} failed, ${remaining} remaining."
+    RELEASE_NAME=$(jq -r '.releaseName // empty' <<<"$resp")
+    note "Scheduled ${scheduled}, ${failed} failed, ${remaining} remaining, in release ${RELEASE_NAME:-unnamed}."
     jq -r '.results[]? | select(.scheduled == false)
            | "  ✗ \(.pageId) \(.title // "") — \(.reason // "no reason given")"' <<<"$resp" || true
     [ "$remaining" -gt 0 ] || break
@@ -330,6 +335,7 @@ fi
   echo "would-schedule=${TOTAL_WOULD}"
   echo "matched=${TOTAL_MATCHED}"
   echo "unmatched-source-ids=${UNMATCHED}"
+  echo "release-name=${RELEASE_NAME:-}"
 } >> "${GITHUB_OUTPUT:-/dev/null}"
 
 if [ "$LEED_FAIL_ON_UNMATCHED" = "true" ] && [ "$unmatched_count" -gt 0 ]; then

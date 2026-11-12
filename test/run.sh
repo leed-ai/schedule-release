@@ -37,19 +37,21 @@ for ((i = 1; i <= $#; i++)); do
 done
 echo "$body" >> "$STUB_LOG"
 confirm="$(jq -r '.confirm' <<<"$body")"
+# Leed answers with the release it chose: the caller's releaseVersion, or a date-based name.
+release="$(jq -r '.releaseVersion // "2030-01-01-01"' <<<"$body")"
 case "${STUB_MODE:-ok}" in
   402)
     echo '{"error":"upgrade_required","message":"Growth plan required"}' > "$out"; echo 402; exit 0 ;;
 esac
 if [[ "$confirm" == "false" ]]; then
-  echo '{"dryRun":true,"matched":1,"wouldSchedule":1,"wouldFail":0,"unmatchedSourceIds":[],"results":[]}' > "$out"
+  echo "{\"dryRun\":true,\"matched\":1,\"wouldSchedule\":1,\"wouldFail\":0,\"unmatchedSourceIds\":[],\"results\":[],\"releaseName\":\"$release\"}" > "$out"
 else
   n=$(cat "$STUB_COUNTER" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$STUB_COUNTER"
   case "${STUB_MODE:-ok}" in
     drain) if [[ $n -eq 1 ]]; then r=2; s=1; else r=0; s=2; fi
            echo "{\"dryRun\":false,\"scheduled\":$s,\"failed\":0,\"remaining\":$r,\"results\":[]}" > "$out" ;;
     stuck) echo '{"dryRun":false,"scheduled":0,"failed":1,"remaining":5,"results":[{"pageId":"p9","scheduled":false,"reason":"PUBLISHED, needs revise"}]}' > "$out" ;;
-    *)     echo '{"dryRun":false,"scheduled":1,"failed":0,"remaining":0,"results":[]}' > "$out" ;;
+    *)     echo "{\"dryRun\":false,\"scheduled\":1,\"failed\":0,\"remaining\":0,\"results\":[],\"releaseName\":\"$release\"}" > "$out" ;;
   esac
 fi
 echo 200
@@ -86,9 +88,9 @@ git init -q "$MERGE"
 # ---------------------------------------------------------------------------
 run() {
   local dir="$1"; shift
-  : > "$WORK/log"; rm -f "$WORK/counter"
+  : > "$WORK/log"; : > "$WORK/output"; rm -f "$WORK/counter"
   OUT="$( cd "$dir" && env -i HOME="$HOME" PATH="$WORK/bin:$PATH" \
-      STUB_LOG="$WORK/log" STUB_COUNTER="$WORK/counter" \
+      STUB_LOG="$WORK/log" STUB_COUNTER="$WORK/counter" GITHUB_OUTPUT="$WORK/output" \
       LEED_AUDIENCE="leed-cms:test" LEED_PUBLISH_AT="2030-01-01T00:00:00Z" "$@" \
       bash "$SCRIPT" 2>&1 )" && CODE=0 || CODE=$?
 }
@@ -162,6 +164,13 @@ run "$LINEAR" LEED_OIDC_TOKEN=t LEED_SOURCE_IDS=aaa LEED_MINIMUM_STATUS=approved
 if [[ "$(sent_field .minimumStatus)" == '"approved"' ]]; then pass "minimumStatus is sent when set"; else fail "minimumStatus sent" "body: $(head -1 "$WORK/log")"; fi
 
 run "$LINEAR" LEED_OIDC_TOKEN=t LEED_SOURCE_IDS=aaa
+if [[ "$(sent_field 'has("releaseVersion")')" == "false" ]]; then pass "releaseVersion is omitted by default, so Leed picks a date-named release"; else fail "releaseVersion omitted" "body: $(head -1 "$WORK/log")"; fi
+
+run "$LINEAR" LEED_OIDC_TOKEN=t LEED_SOURCE_IDS=aaa LEED_RELEASE_VERSION=v2.4.0
+if [[ "$(sent_field .releaseVersion)" == '"v2.4.0"' ]]; then pass "releaseVersion is sent when set"; else fail "releaseVersion sent" "body: $(head -1 "$WORK/log")"; fi
+expect "  ...and the dry run prints the release name" 0 "Release: v2.4.0."
+
+run "$LINEAR" LEED_OIDC_TOKEN=t LEED_SOURCE_IDS=aaa
 if [[ "$(sent_field .confirm)" == "false" ]]; then pass "a dry run is the default"; else fail "dry run default" "body: $(head -1 "$WORK/log")"; fi
 
 run "$LINEAR" LEED_OIDC_TOKEN=t LEED_SOURCE_IDS=aaa
@@ -180,6 +189,10 @@ expect "  ...and says so in the log" 0 "publishing 15 minutes from now, at ${sen
 echo "responses"
 run "$LINEAR" LEED_OIDC_TOKEN=t LEED_SOURCE_IDS=aaa LEED_DRY_RUN=false STUB_MODE=drain
 expect "remaining pages are drained across repeated calls" 0 "0 remaining"
+
+run "$LINEAR" LEED_OIDC_TOKEN=t LEED_SOURCE_IDS=aaa LEED_DRY_RUN=false
+expect "an execute call prints the release Leed chose" 0 "in release 2030-01-01-01."
+if grep -qx "release-name=2030-01-01-01" "$WORK/output"; then pass "  ...and sets the release-name output"; else fail "release-name output" "output file: $(cat "$WORK/output")"; fi
 
 run "$LINEAR" LEED_OIDC_TOKEN=t LEED_SOURCE_IDS=aaa LEED_DRY_RUN=false STUB_MODE=stuck
 expect "a call that makes no progress stops instead of looping" 1 "scheduled none"
