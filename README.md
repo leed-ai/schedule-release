@@ -68,6 +68,7 @@ value another customer can pick too, and GitHub's issuer is identical for everyo
 | `merge-commit` | no | | A merge commit whose `^1..^2` is the release. See below. |
 | `source-ids` | * | | An explicit list instead of a commit range. See below. |
 | `until` | no | `HEAD` | Commit or ref the release ends at. |
+| `release-version` | no | | The name of the release these pages ship in, usually the tag (`${{ github.ref_name }}` on a tag build). Omitted, Leed joins an unstarted date-named release at the same publish time or creates one (`yyyy-mm-dd-01`). Repeating a run with the same name adds to that release. |
 | `minimum-status` | no | *(inherit)* | `draft`, `in_revision`, `approved`. Omitted, the trust's ceiling applies. A stricter value narrows it; a looser one is refused. |
 | `dry-run` | no | `true` | `true` reports without changing anything. A dry run always runs first regardless. |
 | `leed-url` | no | `https://app.leed.ai` | Base URL of your Leed instance. |
@@ -164,7 +165,9 @@ works in a shallow clone, where the range path deliberately refuses to run.
 
 ## Outputs
 
-`scheduled`, `would-schedule`, `matched`, `unmatched-source-ids` (JSON array).
+`scheduled`, `would-schedule`, `matched`, `unmatched-source-ids` (JSON array), `release-name`
+(the release Leed recorded the pages in: your `release-version`, or the date-based name it chose).
+The job log prints the release name after the dry run and after each scheduling call.
 
 ## Things that will bite you, and what the action does about them
 

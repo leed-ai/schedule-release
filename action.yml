@@ -59,6 +59,14 @@ inputs:
     description: "The commit or ref the release ends at."
     required: false
     default: "HEAD"
+  release-version:
+    description: >-
+      The name of the release these pages ship in, usually the version tag (the tag name on a tag
+      build). Optional: left unset, Leed joins an unstarted
+      date-named release at the same publish time or creates one (`yyyy-mm-dd-01`). Repeating a run
+      with the same name adds to that release.
+    required: false
+    default: ""
   minimum-status:
     description: >-
       Editorial floor: `draft`, `in_revision` or `approved`. Optional — omitted, the trust's
@@ -96,6 +104,9 @@ outputs:
   unmatched-source-ids:
     description: "JSON array of commit ids in the range that matched no page."
     value: ${{ steps.schedule.outputs.unmatched-source-ids }}
+  release-name:
+    description: "The release Leed recorded the pages in: your release-version, or the date-based name it chose."
+    value: ${{ steps.schedule.outputs.release-name }}
 
 runs:
   using: composite
@@ -117,6 +128,7 @@ runs:
         LEED_EVENT_BEFORE: ${{ github.event.before }}
         LEED_UNTIL: ${{ inputs.until }}
         LEED_MINIMUM_STATUS: ${{ inputs.minimum-status }}
+        LEED_RELEASE_VERSION: ${{ inputs.release-version }}
         LEED_DRY_RUN: ${{ inputs.dry-run }}
         LEED_BASE_URL: ${{ inputs.leed-url }}
         LEED_FAIL_ON_UNMATCHED: ${{ inputs.fail-on-unmatched }}
